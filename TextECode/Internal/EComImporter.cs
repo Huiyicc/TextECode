@@ -31,6 +31,7 @@ namespace OpenEpl.TextECode.Internal
         private readonly List<(MethodInfo dest, MethodInfo src)> methodPairs;
         private readonly ECDependencyInfo dependencyInfo;
         private readonly Dictionary<int, ExternalDataTypeElem> ecDataType;
+        private readonly List<(int start, int count)> reExportedIdRanges;
         private bool completed = false;
 
         public EComImporter(TextECodeRestorer p, EplDocument ecDoc, DependencyModel.ECom model, FileInfo file)
@@ -71,6 +72,22 @@ namespace OpenEpl.TextECode.Internal
                 }
             }
             ecDataType = new Dictionary<int, ExternalDataTypeElem>();
+            reExportedIdRanges = new List<(int start, int count)>();
+            var ecDependencies = ecDoc.GetOrNull(ECDependenciesSection.Key);
+            if (ecDependencies is not null)
+            {
+                foreach (var dependency in ecDependencies.ECDependencies)
+                {
+                    if (!dependency.ReExport)
+                    {
+                        continue;
+                    }
+                    foreach (var ids in dependency.DefinedIds)
+                    {
+                        reExportedIdRanges.Add((ids.Start & EplSystemId.Mask_Num, ids.Count));
+                    }
+                }
+            }
         }
 
         public IScope<ProgramElemName, ProgramElem> Import()
@@ -164,7 +181,7 @@ namespace OpenEpl.TextECode.Internal
             int idStart = 0, idCount = 0;
             foreach (var item in ecCode.Methods)
             {
-                if (item.IsStatic && item.Public)
+                if (item.IsStatic && (item.Public || IsReExported(item.Id)))
                 {
                     var id = P.AllocId(EplSystemId.Type_Method);
                     if (idStart == 0)
@@ -244,7 +261,7 @@ namespace OpenEpl.TextECode.Internal
             int idStart = 0, idCount = 0;
             foreach (var item in ecCode.DllDeclares)
             {
-                if (item.Public)
+                if (item.Public || IsReExported(item.Id))
                 {
                     var id = P.AllocId(EplSystemId.Type_Dll);
                     if (idStart == 0)
@@ -276,7 +293,7 @@ namespace OpenEpl.TextECode.Internal
             int idStart = 0, idCount = 0;
             foreach (var item in ecResource.Constants)
             {
-                if (item.Public)
+                if (item.Public || IsReExported(item.Id))
                 {
                     var id = P.AllocId(EplSystemId.GetType(item.Id));
                     if (idStart == 0)
@@ -314,7 +331,7 @@ namespace OpenEpl.TextECode.Internal
             int idStart = 0, idCount = 0;
             foreach (var item in ecCode.GlobalVariables)
             {
-                if (item.Public)
+                if (item.Public || IsReExported(item.Id))
                 {
                     var id = P.AllocId(EplSystemId.Type_Global);
                     if (idStart == 0)
@@ -386,7 +403,7 @@ namespace OpenEpl.TextECode.Internal
             foreach (var item in ecCode.Classes)
             {
                 if (EplSystemId.GetType(item.Id) == EplSystemId.Type_Class
-                    && ecPublicClassIds.Contains(item.Id))
+                    && (ecPublicClassIds.Contains(item.Id) || IsReExported(item.Id)))
                 {
                     var id = P.AllocId(EplSystemId.Type_Class);
                     if (idStart == 0)
@@ -421,7 +438,7 @@ namespace OpenEpl.TextECode.Internal
             int idStart = 0, idCount = 0;
             foreach (var item in ecCode.Structs)
             {
-                if (item.Public)
+                if (item.Public || IsReExported(item.Id))
                 {
                     var id = P.AllocId(EplSystemId.Type_Struct);
                     if (idStart == 0)
@@ -444,6 +461,19 @@ namespace OpenEpl.TextECode.Internal
                 }
             }
             AddPackedIdsToECDependency(idStart, idCount);
+        }
+
+        private bool IsReExported(int id)
+        {
+            var num = id & EplSystemId.Mask_Num;
+            foreach (var (start, count) in reExportedIdRanges)
+            {
+                if (num >= start && num < start + count)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void AddPackedIdsToECDependency(int idStart, int idCount)

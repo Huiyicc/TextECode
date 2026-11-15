@@ -297,14 +297,16 @@ namespace OpenEpl.TextECode
             }
 
             UserTopLevelScope = new();
-            TopLevelScope = new ParallelScope<ProgramElemName, ProgramElem>(
-               new IScope<ProgramElemName, ProgramElem>[]
-               {
-                   SystemTopLevelScope,
-                   UserTopLevelScope
-               }
-               .Concat(LibTopLevelScopes)
-               .Concat(ecTopLevelScopes)
+            TopLevelScope = new InheritedScope<ProgramElemName, ProgramElem>(
+                new ParallelScope<ProgramElemName, ProgramElem>(
+                    new IScope<ProgramElemName, ProgramElem>[]
+                    {
+                        SystemTopLevelScope,
+                        UserTopLevelScope
+                    }
+                    .Concat(ecTopLevelScopes)
+                ),
+                new ParallelScope<ProgramElemName, ProgramElem>(LibTopLevelScopes)
             );
 
             Code.Libraries = libraryRefInfos.ToArray();
